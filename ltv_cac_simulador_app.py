@@ -4,40 +4,49 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 # Carregar dados
+
+
+uploaded_file = st.file_uploader("Faça upload da base de clientes (.csv)", type="csv")
+
 @st.cache_data
-def carregar_dados():
-    df = pd.read_csv("cliente_ltv.csv")
+def carregar_dados(file):
+    if file is not None:
+        df = pd.read_csv(file)
 
-    # Garantir que LTV e lt não estejam nulos
-    df = df.dropna(subset=['LTV', 'lt'])
+        # Garantir que LTV e lt não estejam nulos ou inválidos
+        df = df.dropna(subset=['LTV', 'lt'])
+        df = df[(df["LTV"] > 0) & (df["Deal"] > 500)]
+        df = df[df['lt'] > 0]
 
-    # Filtrar também valores negativos ou zero, se fizer sentido
-    df = df[df['LTV'] > 0]
-    df = df[df['lt'] > 0]
+        # Cálculos
+        df['revenues_medio'] = df['LTV'] / df['lt']
+        df['custo_operacional'] = df['LTV'] * 0.70
+        df['cac'] = 3000
+        df['custo_total'] = df['custo_operacional'] + df['cac']
+        df['lucro_estimado'] = df['LTV'] - df['custo_total']
+        df['viavel'] = df['lucro_estimado'] > 0
 
-    # Cálculos
-    df['revenues_medio'] = df['LTV'] / df['lt']
-    df['custo_operacional'] = df['LTV'] * 0.70
-    df['cac'] = 3000
-    df['custo_total'] = df['custo_operacional'] + df['cac']
-    df['lucro_estimado'] = df['LTV'] - df['custo_total']
-    df['viavel'] = df['lucro_estimado'] > 0
+        # KMeans com log do ARPU
+        X = np.log1p(df[['revenues_medio']])
+        kmeans = KMeans(n_clusters=6, random_state=42)
+        df['cluster'] = kmeans.fit_predict(X)
 
-    # Criação das faixas com KMeans
-    X = np.log1p(df[["revenues_medio"]])  # aplica log para melhor clusterização
-    kmeans = KMeans(n_clusters=6, random_state=42)
-    df['cluster'] = kmeans.fit_predict(X)
+        # Nomear clusters
+        centroides = kmeans.cluster_centers_.flatten()
+        ordem_clusters = centroides.argsort()
+        mapa_faixas = {cluster: f'Faixa {i+1}' for i, cluster in enumerate(ordem_clusters)}
+        df['faixa_arpu'] = df['cluster'].map(mapa_faixas)
 
-    # Organiza clusters em ordem crescente
-    centroides = kmeans.cluster_centers_.flatten()
-    ordem_clusters = centroides.argsort()
-    mapa_faixas = {cluster: f'Faixa {i+1}' for i, cluster in enumerate(ordem_clusters)}
-    df["faixa_arpu"] = df['cluster'].map(mapa_faixas)
+        return df
+    else:
+        return None
 
-    return df
+df = carregar_dados(uploaded_file)
 
-
-df = carregar_dados()
+# Se não houver arquivo, interrompe
+if df is None:
+    st.warning("Por favor, envie a base de clientes para iniciar a análise.")
+    st.stop()
 
 # Sidebar - Parâmetros de simulação
 st.sidebar.title("Simulador de Viabilidade")
