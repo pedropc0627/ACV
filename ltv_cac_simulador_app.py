@@ -8,40 +8,39 @@ from sklearn.cluster import KMeans
 
 uploaded_file = st.file_uploader("Faça upload da base de clientes (.csv)", type="csv")
 
+
 @st.cache_data
 def carregar_dados(file):
-    if file is not None:
-        df = pd.read_csv(file)
+    df = pd.read_csv(file)
+    df = df.dropna(subset=['LTV', 'lt'])
+    df = df[(df["LTV"] > 0) & (df["Deal"] > 500)]
+    df = df[df['lt'] > 0]
+    
+    df['revenues_medio'] = df['LTV'] / df['lt']
+    df['custo_operacional'] = df['LTV'] * 0.70
+    df['cac'] = 3000
+    df['custo_total'] = df['custo_operacional'] + df['cac']
+    df['lucro_estimado'] = df['LTV'] - df['custo_total']
+    df['viavel'] = df['lucro_estimado'] > 0
 
-        # Garantir que LTV e lt não estejam nulos ou inválidos
-        df = df.dropna(subset=['LTV', 'lt'])
-        df = df[(df["LTV"] > 0) & (df["Deal"] > 500)]
-        df = df[df['lt'] > 0]
+    from sklearn.cluster import KMeans
+    X = np.log1p(df[['revenues_medio']])
+    kmeans = KMeans(n_clusters=6, random_state=42)
+    df['cluster'] = kmeans.fit_predict(X)
 
-        # Cálculos
-        df['revenues_medio'] = df['LTV'] / df['lt']
-        df['custo_operacional'] = df['LTV'] * 0.70
-        df['cac'] = 3000
-        df['custo_total'] = df['custo_operacional'] + df['cac']
-        df['lucro_estimado'] = df['LTV'] - df['custo_total']
-        df['viavel'] = df['lucro_estimado'] > 0
+    centroides = kmeans.cluster_centers_.flatten()
+    ordem_clusters = centroides.argsort()
+    mapa_faixas = {cluster: f'Faixa {i+1}' for i, cluster in enumerate(ordem_clusters)}
+    df['faixa_arpu'] = df['cluster'].map(mapa_faixas)
 
-        # KMeans com log do ARPU
-        X = np.log1p(df[['revenues_medio']])
-        kmeans = KMeans(n_clusters=6, random_state=42)
-        df['cluster'] = kmeans.fit_predict(X)
+    return df
 
-        # Nomear clusters
-        centroides = kmeans.cluster_centers_.flatten()
-        ordem_clusters = centroides.argsort()
-        mapa_faixas = {cluster: f'Faixa {i+1}' for i, cluster in enumerate(ordem_clusters)}
-        df['faixa_arpu'] = df['cluster'].map(mapa_faixas)
-
-        return df
-    else:
-        return None
-
-df = carregar_dados(uploaded_file)
+# 🔁 Verifica se o arquivo foi carregado antes de seguir
+if uploaded_file is not None:
+    df = carregar_dados(uploaded_file)
+else:
+    st.warning("Por favor, envie a base de clientes para iniciar a análise.")
+    st.stop()
 
 # Se não houver arquivo, interrompe
 if df is None:
