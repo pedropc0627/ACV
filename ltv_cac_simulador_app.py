@@ -18,12 +18,12 @@ def carregar_dados(file):
     
     df['revenues_medio'] = df['LTV'] / df['lt']
     df['custo_operacional'] = df['LTV'] * 0.70
-    df['cac'] = 3000
+    df['cac'] = 6453
     df['custo_total'] = df['custo_operacional'] + df['cac']
     df['lucro_estimado'] = df['LTV'] - df['custo_total']
     df['viavel'] = df['lucro_estimado'] > 0
 
-    from sklearn.cluster import KMeans
+    
     X = np.log1p(df[['revenues_medio']])
     kmeans = KMeans(n_clusters=6, random_state=42)
     df['cluster'] = kmeans.fit_predict(X)
@@ -36,20 +36,16 @@ def carregar_dados(file):
     return df
 
 # 🔁 Verifica se o arquivo foi carregado antes de seguir
+
+# Se não houver arquivo, interrompe
 if uploaded_file is not None:
     df = carregar_dados(uploaded_file)
 else:
-    st.warning("Por favor, envie a base de clientes para iniciar a análise.")
-    st.stop()
-
-# Se não houver arquivo, interrompe
-if df is None:
-    st.warning("Por favor, envie a base de clientes para iniciar a análise.")
-    st.stop()
+    df = None
 
 # Sidebar - Parâmetros de simulação
 st.sidebar.title("Simulador de Viabilidade")
-cac_sim = st.sidebar.number_input("CAC (R$)", value=3000)
+cac_sim = st.sidebar.number_input("CAC (R$) (6.543 nos utlimos meses)", value=6453)
 deal_sim = st.sidebar.number_input("Deal médio mensal (R$)", value=5000)
 lt_sim = st.sidebar.number_input("Lifetime (meses)", value=7)
 margem = st.sidebar.number_input("Margem (%)", value=30, min_value=0, max_value=100) / 100
@@ -61,8 +57,9 @@ pagina = st.sidebar.selectbox("Escolha a análise", [
 ])
 
 if pagina == "Resumo por Faixa de Arpu":
-    st.title("Resumo por Faixa de Arpu")
-
+    if df is None:
+        st.warning("Por favor, envie a base de clientes para visualizar o resumo por faixa.")
+        st.stop()
     resumo = df.groupby('faixa_arpu').agg(
         qtd_clientes=('cliente', 'count'),
         receita_total=('LTV', 'sum'),
@@ -92,18 +89,22 @@ if pagina == "Resumo por Faixa de Arpu":
 elif pagina == "Simulador de Viabilidade":
     st.title("Simulador de Viabilidade")
 
-    ltv_sim = deal_sim * lt_sim
-    custo_operacional_sim = ltv_sim * 0.70
-    custo_total_sim = custo_operacional_sim + cac_sim
+    # LTV com e sem margem
+    ltv_bruto = deal_sim * lt_sim
+    ltv_sim = ltv_bruto * margem
+
+    # Corrigido: agora o único custo é o CAC
+    custo_total_sim = cac_sim
     lucro_sim = ltv_sim - custo_total_sim
     viavel = lucro_sim > 0
 
-    st.metric("LTV simulado (R$)", round(ltv_sim, 2))
+    st.metric("LTV Bruto (R$)", round(ltv_bruto, 2))
+    st.metric("LTV com Margem (R$)", round(ltv_sim, 2))
     st.metric("Lucro estimado (R$)", round(lucro_sim, 2))
     st.metric("Situação", "Viável" if viavel else "Inviável")
 
-    # Gráfico
-    meses = np.arange(lt_sim + 1)
+    # Gráfico de payback
+    meses = np.arange(max(2, lt_sim + 1))
     lucro_efetivo_mensal = deal_sim * margem
     receita_acumulada = lucro_efetivo_mensal * meses
     lucro_acumulado = receita_acumulada - cac_sim
@@ -123,7 +124,9 @@ elif pagina == "Simulador de Viabilidade":
     st.pyplot(fig)
 
 elif pagina == "Gráfico CAC Payback por Cliente":
-    st.title("Gráfico CAC Payback por Cliente")
+    if df is None:
+        st.warning("Por favor, envie a base de clientes para visualizar o gráfico por cliente.")
+        st.stop()
     cliente_nome = st.selectbox("Selecione o cliente:", df['cliente'].unique())
     cliente = df[df["cliente"] == cliente_nome].iloc[0]
 
